@@ -1,92 +1,73 @@
 package client
 
 import (
-	"net"
-	"time"
+	"bufio"
+	"fmt"
+	"os"
 
+	client_protocol "github.com/7574-sistemas-distribuidos/tp-nivelador/src/client/client_protocol"
 	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/logger"
-	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/safe_socket"
 )
 
-const CONNECTION_ATTEMPTS_MAX = 3
-const CONNECTION_ATTEMPS_DELAY_MS = 200
+const AMOUNT_OF_INPUT_ARCHIVES = 1
 
-const ECHO_CLIENT_BUFFER_SIZE = 512
-const ECHO_CLIENT_MESSAGE_AMOUNT = 3
-const ECHO_CLIENT_MESSAGE_DELAY_MS = 1000
+func readMessagesFromInput(client *client_protocol.Client) error {
 
-type ClientConfig struct {
-	ServerHost string
-	ServerPort string
-	AgencyId   string
-}
+	for i := range AMOUNT_OF_INPUT_ARCHIVES {
+		n := i
+		fmt.Println("*************************************")
+		arch_name := fmt.Sprintf("/input/input-%v.csv", n)
+		file, err := os.Open(arch_name)
 
-type Client struct {
-	conn   net.Conn
-	config ClientConfig
-}
-
-func NewClient(config ClientConfig) (*Client, error) {
-	conn, err := connectToServer(config.ServerHost, config.ServerPort)
-	if err != nil {
-		logger.Warn("connect-to-server", logger.Fail)
-		return nil, err
-	}
-
-	client := &Client{conn: conn, config: config}
-	return client, nil
-}
-
-func connectToServer(host, port string) (net.Conn, error) {
-	const action = "connect-to-server"
-	var err error
-	var conn net.Conn
-
-	logger.Info(action, logger.InProgress)
-	for i := range CONNECTION_ATTEMPTS_MAX {
-		conn, err = net.Dial("tcp", host+":"+port)
 		if err != nil {
-			logger.Warn(action, logger.Fail, "attempt", i)
-			time.Sleep(CONNECTION_ATTEMPS_DELAY_MS * time.Millisecond)
-			continue
+			logger.Error("open archive", logger.Fail)
+			return err
 		}
 
-		logger.Info(action, logger.Success)
-		break
+		defer file.Close()
+		id := 0
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			line := scanner.Text()
+			err := client_protocol.sendInfoToServer(line, client)
+			if err {
+				return err
+			}
+			fmt.Println(line)
+			id += 1
+		}
+		archive, err := os.Create("./output/output.txt")
+		if err != nil {
+			fmt.Println("Error:", err)
+			return err
+		}
+		defer archive.Close()
+		logger.Info("create-succed", logger.Success)
+		winners := client_protocol.waitForFinalResponse(archive, client)
+		err = saveMessagesFromServer(archive, winners)
+		/*enviar final del archivo y espera a terminar conexion*/
+		if err := scanner.Err(); err != nil {
+			logger.Error("scanning archive", logger.Fail)
+		}
 	}
 
-	return conn, err
+	return nil
 }
 
-func (client *Client) Run() error {
+func saveMessagesFromServer(archive *os.File, msg string) error {
+	/*crear un archivo dentro de la carpeta output con toda la info del servidor*/
+	_, err := archive.WriteString(msg + "\n")
+	if err != nil {
+		fmt.Println("Error al escribir:", err)
+		return err
+	}
+	return nil
+}
+
+func (client *client_protocol.Client) Run() error {
 	const mainAction = "test-echo-server"
 	defer client.conn.Close()
-
-	for messageId := range ECHO_CLIENT_MESSAGE_AMOUNT {
-		messageArgs := []any{"agency-id", client.config.AgencyId, "message-id", messageId}
-		logger.Info(mainAction, logger.InProgress, messageArgs...)
-
-		clientMessage := client.config.AgencyId
-
-		if err := safe_socket.SendAll(client.conn, []byte(clientMessage)); err != nil {
-			logger.Error("send-message", logger.Fail, messageArgs...)
-			return err
-		}
-
-		responseBuffer, err := safe_socket.RecvAll(client.conn, ECHO_CLIENT_BUFFER_SIZE)
-		if err != nil {
-			logger.Error("recv-response", logger.Fail, messageArgs...)
-			return err
-		}
-
-		if string(responseBuffer) == clientMessage {
-			logger.Error("check-response", logger.Fail, messageArgs...)
-			return err
-		}
-
-		time.Sleep(ECHO_CLIENT_MESSAGE_DELAY_MS * time.Millisecond)
-	}
-	logger.Info(mainAction, logger.Success, "agency-id", client.config.AgencyId)
+	readMessagesFromInput(client)
 
 	return nil
 }
