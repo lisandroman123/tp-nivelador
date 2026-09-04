@@ -1,59 +1,40 @@
 import socket
 import logger
-import safe_socket
-
-_ECHO_SERVER_MESSAGE_SIZE = 1024
-_ECHO_SERVER_FIRST_MSG_SIZE = 2
+import server_protocol
+import src_frozen.lottery.lottery as lottery_module
 
 class Server:
+    protocol: server_protocol.ServerProtocol
+    lottery: lottery_module.Lottery
+
     def __init__(self, server_host: str, server_port: int) -> None:
         self.server_host = server_host
         self.server_port = server_port
+        self.protocol = server_protocol.ServerProtocol()
+        self.lottery = lottery_module.Lottery()
 
     def _handle_client(self, client_socket):
-        action = "handle-client"
-        message_amount = 0
-        try:
-            logger.info(action, logger.LogResult.in_progress)
-            while message_amount < 3:                                      
-                client_message = safe_socket.recv_all(
-                    client_socket, _ECHO_SERVER_FIRST_MSG_SIZE
-                )                                         
-                if not client_message:
-                    logger.info(
-                        action,
-                        logger.LogResult.success,
-                        "messages-amount",
-                        message_amount,
-                    )
-                    return
-                message_amount += 1
-                safe_socket.send_all(client_socket, client_message)
-
-            self._process(client_socket)                
-
-        except Exception as e:
-            logger.error(
-                action, logger.LogResult.fail, "messages-amount", message_amount
-            )
-            raise e
+        action = "handle-client"        
+        logger.info(action, logger.LogResult.in_progress)            
+        self._process(client_socket)                
 
     def _process(self,client_socket):
-        while True:
-            sz_payload=2
-            client_message = safe_socket.recv_all(client_socket, sz_payload)
-            client_message = int.from_bytes(client_message, byteorder='big')
-            print(f"client_message: {client_message}")
-            payload = safe_socket.recv_all(client_socket, client_message)                
-            print(f"client_message_payload: {payload}")    
+        while True:            
+            msg_type, bet = self.protocol.reciveMessageFromClient(client_socket)
+            if msg_type == 2 and bet == "ACK":
+                break
+            else:
+                self.lottery.store_bets([bet])         
+        winners = self.calculate_winners()
+        self.protocol.sendMessageToClient(client_socket,winners)
 
-            size = len(payload).to_bytes(2, byteorder="big")
-            safe_socket.send_all(client_socket, size)
-            print(f"sent_message_sz: {len(payload) }")
-            safe_socket.send_all(client_socket,payload)
-            print(f"sent_message_payload: {payload}")
-
-
+    def calculate_winners(self):        
+        winners = []
+        for bet in self.lottery.load_bets():
+            if self.lottery.has_won(bet):
+                winners.append(bet)
+        return winners
+    
     def run(self):
         action = "accept-connection"
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:

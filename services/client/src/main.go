@@ -4,27 +4,29 @@ import (
 	"errors"
 	"os"
 
-	client_protocol "github.com/7574-sistemas-distribuidos/tp-nivelador/src/client/client_protocol"
-	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/logger"
+	client "github.com/lisandroman123/tp-nivelador/src/client"
+	"github.com/lisandroman123/tp-nivelador/src/client_protocol"
+	"github.com/lisandroman123/tp-nivelador/src/logger"
+	client_connection "github.com/lisandroman123/tp-nivelador/src/safe_socket"
 )
 
-func loadConfig() (client_protocol.ClientConfig, error) {
+func loadConfig() (client_connection.ClientConfig, error) {
 	agencyId := os.Getenv("AGENCY_ID")
 	if agencyId == "" {
-		return client_protocol.ClientConfig{}, errors.New("AGENCY_ID environment variable is required")
+		return client_connection.ClientConfig{}, errors.New("AGENCY_ID environment variable is required")
 	}
 
 	serverHost := os.Getenv("SERVER_HOST")
 	if serverHost == "" {
-		return client_protocol.ClientConfig{}, errors.New("SERVER_HOST environment variable is required")
+		return client_connection.ClientConfig{}, errors.New("SERVER_HOST environment variable is required")
 	}
 
 	serverPort := os.Getenv("SERVER_PORT")
 	if serverPort == "" {
-		return client_protocol.ClientConfig{}, errors.New("SERVER_PORT environment variable is required")
+		return client_connection.ClientConfig{}, errors.New("SERVER_PORT environment variable is required")
 	}
 
-	return client_protocol.ClientConfig{
+	return client_connection.ClientConfig{
 		ServerHost: serverHost,
 		ServerPort: serverPort,
 		AgencyId:   agencyId,
@@ -38,11 +40,16 @@ func run() int {
 		return 1
 	}
 
-	client, err := client_protocol.NewClient(config)
+	connection, err := client_connection.NewClient(config)
 	if err != nil {
 		logger.Error("client-new", logger.Fail, "err", err)
 		return 1
 	}
+	defer connection.Close()
+
+	protocol := client_protocol.New(connection)
+
+	client := client.New(protocol)
 
 	if err := client.Run(); err != nil {
 		logger.Error("client-run", logger.Fail, "err", err)

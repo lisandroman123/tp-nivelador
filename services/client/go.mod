@@ -1,3 +1,3 @@
-module "github.com/7574-sistemas-distribuidos/tp-nivelador"
+module "github.com/lisandroman123/tp-nivelador"
 
 go 1.24.1

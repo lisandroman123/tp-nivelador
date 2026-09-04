@@ -5,13 +5,17 @@ import (
 	"fmt"
 	"os"
 
-	client_protocol "github.com/7574-sistemas-distribuidos/tp-nivelador/src/client/client_protocol"
-	"github.com/7574-sistemas-distribuidos/tp-nivelador/src/logger"
+	client_protocol "github.com/lisandroman123/tp-nivelador/src/client_protocol"
+	"github.com/lisandroman123/tp-nivelador/src/logger"
 )
 
 const AMOUNT_OF_INPUT_ARCHIVES = 1
 
-func readMessagesFromInput(client *client_protocol.Client) error {
+type Client struct {
+	protocol *client_protocol.Protocol
+}
+
+func readMessagesFromInput(c *Client) error {
 
 	for i := range AMOUNT_OF_INPUT_ARCHIVES {
 		n := i
@@ -29,8 +33,8 @@ func readMessagesFromInput(client *client_protocol.Client) error {
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
 			line := scanner.Text()
-			err := client_protocol.sendInfoToServer(line, client)
-			if err {
+			err := c.protocol.SendInfoToServer(line)
+			if err != nil {
 				return err
 			}
 			fmt.Println(line)
@@ -43,7 +47,7 @@ func readMessagesFromInput(client *client_protocol.Client) error {
 		}
 		defer archive.Close()
 		logger.Info("create-succed", logger.Success)
-		winners := client_protocol.waitForFinalResponse(archive, client)
+		winners, err := c.protocol.WaitForFinalResponse(archive)
 		err = saveMessagesFromServer(archive, winners)
 		/*enviar final del archivo y espera a terminar conexion*/
 		if err := scanner.Err(); err != nil {
@@ -64,10 +68,16 @@ func saveMessagesFromServer(archive *os.File, msg string) error {
 	return nil
 }
 
-func (client *client_protocol.Client) Run() error {
+func (c *Client) Run() error {
 	const mainAction = "test-echo-server"
-	defer client.conn.Close()
-	readMessagesFromInput(client)
+	readMessagesFromInput(c)
 
 	return nil
+}
+
+func New(p *client_protocol.Protocol) *Client {
+	return &Client{
+		protocol: p,
+	}
+
 }
