@@ -10,7 +10,7 @@ import (
 )
 
 const AMOUNT_OF_INPUT_ARCHIVES = 1
-
+const MAX_AMOUNT_OF_BYTES = 16777215
 type Client struct {
 	protocol *client_protocol.Protocol
 }
@@ -29,16 +29,36 @@ func readMessagesFromInput(c *Client) error {
 		}
 
 		defer file.Close()
-		id := 0
+		
 		scanner := bufio.NewScanner(file)
+		batch := make([]string, 0,10)
 		for scanner.Scan() {
 			line := scanner.Text()
-			err := c.protocol.SendInfoToServer(line)
-			if err != nil {
+			candidate := append(batch,line)
+			payload := strings.Join(candidate, "\n")
+
+			if len([]byte(payload)) > MAX_AMOUNT_OF_BYTES{
+				if len(batch > 0){
+					r, err := c.protocol.SendInfoToServer(line)			
+					if err != nil || r != "ACK" {
+						return err
+					}										
+					batch = batch[:0]
+				}
+				batch = append(batch,line)
+			}
+
+			batch = candidate			
+		}
+		
+		if len(batch) > 0{
+			r, err := c.protocol.SendInfoToServer(line)			
+			if err != nil || r != "ACK" {
 				return err
 			}
-			fmt.Println(line)
-			id += 1
+		}
+			
+			
 		}
 		archive, err := os.Create("./output/output.txt")
 		if err != nil {

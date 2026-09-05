@@ -21,12 +21,15 @@ class Server:
     def _process(self,client_socket):
         while True:            
             msg_type, bet = self.protocol.reciveMessageFromClient(client_socket)
-            if msg_type == 2 and bet == "ACK":
+            if msg_type == 2 and bet == "EOS":
                 break
             else:
-                self.lottery.store_bets([bet])         
+                self.lottery.store_bets([bet])   #if not error                      
+                self.protocol.sendACKToClient(client_socket, msg)
+                #if error send other msg conection closed
         winners = self.calculate_winners()
-        self.protocol.sendMessageToClient(client_socket,winners)
+        msg = self.protocol.serialize(winners)
+        self.protocol.sendMessageToClient(client_socket,msg)
 
     def calculate_winners(self):        
         winners = []
