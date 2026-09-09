@@ -19,10 +19,9 @@ def recv_all(socket: socket.socket, size):
 def send_all(socket: socket.socket, bytes):
     sent = 0
     sz_sent = 0 
-    while (sent < len(bytes)):
-        sz_sent = socket.send(bytes[sz_sent:])
-        if sz_sent == 0:
-            return "error"
+    sz = len(bytes)
+    while (sent < sz):
+        sz_sent = socket.send(bytes[sent:])        
         sent+=sz_sent
     return sent
         
