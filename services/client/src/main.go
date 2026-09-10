@@ -81,10 +81,17 @@ func run() int {
 
 	go func() {
 		<-ctx.Done()
+
+		logger.Info("client-recived-signal", logger.Success)
+
 		client.Close()
 	}()
 
 	if err := client.Run(); err != nil {
+		if ctx.Err != nil {
+			logger.Info("client-shutdown", logger.Success)
+			return 0
+		}
 		logger.Error("client-run", logger.Fail, "err", err)
 		return 1
 	}

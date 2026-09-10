@@ -17,11 +17,11 @@ class Server:
         self.server_port = server_port
         self.protocol = ServerProtocol()
         self.lottery = lottery_module.Lottery("./bets.txt")
-        self._shutdown = False
-        self.threads = []
+        self._shutdown = False        
+        self.threads = []        
         self.threads_lock = threading.Lock()
         self.condition = threading.Condition()
-        self.finished_clients = 0
+        self.finished_clients = 0        
         self.minimum_clients_needed=minimum_clients_needed
                         
     def _handle_client(self, client_socket):
@@ -29,33 +29,38 @@ class Server:
         logger.info(action, logger.LogResult.in_progress)            
         try:
             self._process(client_socket)                                                               
-        finally:
+        finally:            
+            client_socket.shutdown(socket.SHUT_RDWR)            
             client_socket.close()
 
-    def _process(self,client_socket):        
-        agency_id = -1
+    def _receive_bets(self, client_socket):
+        agency_id=-1
         while True:            
             msg_type, bets = self.protocol.reciveMessageFromClient(client_socket)
             if msg_type == 2:
-                break
+                return agency_id
             else:
                 if agency_id==-1:
-                    agency_id=bets[0].agency_id
-                    print(f"agency_id: {agency_id}")
-                self.lottery.store_bets(bets)   #if not error                      
+                    agency_id=bets[0].agency_id        
+                self.lottery.store_bets(bets)   
                 self.protocol.sendACKToClient(client_socket)
-                #if error send other msg conection closed
+
+    def _chk_calculate_result(self):
         with self.condition:
             self.finished_clients+=1
             if self._shutdown:
-                return
-            if self.finished_clients >= self.minimum_clients_needed:
-                self.winners = self.calculate_winners()
+                return -1
+            if self.finished_clients == self.minimum_clients_needed:                
+                self.finished_clients = 0
+                self.winners = self.calculate_winners()                
                 self.condition.notify_all()
+
             else:
                 self.condition.wait()
                 if self._shutdown:
-                    return
+                    return -1
+
+    def _send_respective_winners_batch(self,client_socket,agency_id):
         winners_batch = ""
         for winner in self.winners:
             if winner.agency_id == agency_id:
@@ -70,8 +75,15 @@ class Server:
                     winners_batch = candidate
         if len(winners_batch) > 0:
             self.protocol.sendMessageToClient(client_socket, winners_batch)
-        self.protocol.sendEndOfStream(client_socket)
-        
+        self.protocol.sendEndOfStream(client_socket)           
+    
+    def _process(self,client_socket):                
+        agency_id = self._receive_bets(client_socket)
+        r = self._chk_calculate_result()
+        if r == -1:
+            return
+        self._send_respective_winners_batch(client_socket,agency_id)
+                        
     def calculate_winners(self):        
         winners = []
         for bet in self.lottery.load_bets():
@@ -88,22 +100,17 @@ class Server:
             target=self._accept_connections,
             args=(self.server_socket,)
         )
-        self.acceptor.start()
-        print("Esperando acceptor...", flush=True)
+        self.acceptor.start()        
         self.acceptor.join()
-        print("Acceptor terminó", flush=True)
-
-        for thread in self.threads:
-            print("Esperando thread cliente...", flush=True)
-            thread.join()
-
-        print("Todos los threads terminaron", flush=True)   
         
+
+        for thread in self.threads:        
+            thread.join()
+                
     def _accept_connections(self, server_socket):        
         while not self._shutdown:
             try:
-                client_socket, _ = server_socket.accept()
-
+                client_socket, _ = server_socket.accept()                
                 thread = threading.Thread(
                     target=self._handle_client,
                     args=(client_socket,)
@@ -119,12 +126,12 @@ class Server:
         
     def shutdown(self):
         self._shutdown = True
-        print("se envia close al server socket", flush=True)  
+        
         try:
             self.server_socket.shutdown(socket.SHUT_RDWR)
         except OSError:
             pass
         self.server_socket.close()        
-        print("server socket close termino", flush=True)  
+        
         with self.condition:
             self.condition.notify_all() 

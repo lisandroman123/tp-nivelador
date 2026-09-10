@@ -43,8 +43,8 @@ func readMessagesFromInput(c *Client) error {
 			sz_b+sz_l > MAX_AMOUNT_OF_BYTES {
 
 			if sz_b > 0 {
-				r, err := c.protocol.SendInfoToServer(batch)
-				if err != nil || r != "ACK" {
+				_, err := c.protocol.SendInfoToServer(batch)
+				if err != nil {
 					return err
 				}
 
@@ -67,21 +67,37 @@ func readMessagesFromInput(c *Client) error {
 			return err
 		}
 	}
-	c.protocol.SendEnfOfFile()
+
 	if err := scanner.Err(); err != nil {
 		logger.Error("scanning archive", logger.Fail)
 		return err
 	}
-	/**
-		ESTA PARTE TIENE QUE ESTAR EN OTRA FUNCION
-	**/
+
+	if err := c.protocol.SendEndOfFile(); err != nil {
+		logger.Error("send-end-of-file-error", logger.Fail)
+		return err
+	}
+
+	return nil
+}
+
+func saveMessagesFromServer(archive *os.File, msg string) error {
+	_, err := archive.WriteString(msg + "\n")
+	if err != nil {
+		fmt.Println("Error al escribir:", err)
+		return err
+	}
+	return nil
+}
+
+func receiveWinnersFromServer(c *Client) error {
 	archive, err := os.Create(c.output_file)
 	if err != nil {
-		fmt.Println("Error:", err)
+		logger.Error("Error opening output_file", logger.Fail)
 		return err
 	}
 	defer archive.Close()
-	logger.Info("create-succed", logger.Success)
+	logger.Info("create-output_file-succed", logger.Success)
 	for {
 		winners, err := c.protocol.ReceiveFinalResponse()
 		if err != nil {
@@ -96,23 +112,26 @@ func readMessagesFromInput(c *Client) error {
 			break
 		}
 	}
-
-	return nil
-}
-
-func saveMessagesFromServer(archive *os.File, msg string) error {
-	/*crear un archivo dentro de la carpeta output con toda la info del servidor*/
-	_, err := archive.WriteString(msg + "\n")
-	if err != nil {
-		fmt.Println("Error al escribir:", err)
-		return err
-	}
 	return nil
 }
 
 func (c *Client) Run() error {
 	const mainAction = "test-echo-server"
-	readMessagesFromInput(c)
+	r := readMessagesFromInput(c)
+	if r != nil {
+		fmt.Printf("readMessagesFromInput ERROR: %v\n", r)
+		return r
+	}
+
+	logger.Info("input-finished", logger.Success)
+
+	save := receiveWinnersFromServer(c)
+	if save != nil {
+		fmt.Printf("receiveWinnersFromServer ERROR: %v\n", save)
+		return save
+	}
+
+	logger.Info("client-finished-successfully", logger.Success)
 	return nil
 }
 

@@ -77,7 +77,7 @@ func New(connection *safe_socket.Connection) *Protocol {
 	}
 }
 
-func (p *Protocol) SendEnfOfFile() error {
+func (p *Protocol) SendEndOfFile() error {
 	header := make([]byte, HEADER_SIZE)
 
 	header[0] = ENDOFSTREAM
