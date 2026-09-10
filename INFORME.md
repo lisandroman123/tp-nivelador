@@ -26,31 +26,34 @@ Un poco más en detalle, sobre el serializador/deserializador. Del lado del clie
 
 En cambio para el servidor, al tener que usar la dataclass bet, es necesario serializar y deserializar el contenido. 
 Primero cuando se recibe un mensaje se identifica su tipo, entonces es posible determinar si tengo que deserializar. De esta manera, si el mensaje es STREAM, el servidor deserializa el paquete de red, separandolo primero por saltos de linea y luego por ',' (comas) de esta manera primero separa cada apuesta, luego cada campo de cada apuesta y genera una Bet(class). Para serializar, simplemente recorre el arreglo de apuestas y genera un string concatenado por comas. Luego este string es casteado a bytes y enviado por la red.
-<div align="center">
-![Diagrama de secuencia del Protocolo de Comunicación](images/sequence_diagram.png)
+<div style="text-align: center; margin: 30px 0;">
+    <img src="images/sequence_diagram.png" alt="Diagrama de secuencia">
 </div>
 ## Sincronización
 El primer problema, que se encuentra es el de poder aceptar conexiones y que el hilo principal no quede trabado y permita, por alguna razon ser el lider de cerrar el servidor en buenos terminos es por ello que se lanzo un acceptor de clientes.
-<div align="center">
-![Diagrama de actividades](images/activity_diagram1.png)
+<div style="text-align: center; margin: 30px 0;">
+    <img src="images/activity_diagram1.png" alt="Diagrama de actividades">
 </div>
 El mismo al recibir una nueva conexion, crea un thread y lo almacena.
 Luego cada thread cliente, tiene que poder comunicarse mediante su socket y almacenar la informacion en un archivo. Esto implica que si todos escriben en el mismo archivo, el mismo pueda ser corrumpido con lo cual, necesite un metodo de sincronización, para el cúal se aplico un mutex o lock, permitiendo que el acceso al archivo sea secuencial. Para que esto suceda se encapsulo el lock en una clase ReadWriteLock, de esta manera es posible que haya varios lectores y sólo 1 escritor.
-<div align="center">
-![Diagrama de actividades](images/activity_diagram_2.png)
+<div style="text-align: center; margin: 30px 0;">
+    <img src="images/activity_diagram_2.png" alt="Diagrama de actividades">
 </div>
-<div align="center">
-![Diagrama de actividades](images/activity_diagram_3.png)
+<div style="text-align: center; margin: 30px 0;">
+    <img src="images/activity_diagram_3.png" alt="Diagrama de actividades">
 </div>
+
 
 El siguiente problema planteado por el enunciado es, procesar los ganadores cuando se cumpla un minimo de conexiones, implica que los threads que llegaron antes, tengan que esperar a que se cumplan las condiciones, de esta manera, se creo una conditional variable, que duerme a los threads y los despierta una vez que se cumple la condicion. En este caso, solo un thread es el que realiza el procesamiento de los winners, generando solo una lectura en el archivo, al mismo tiempo settea la variable que controla la cantidad de conexiones en 0, haciendo que si llegan nuevas conexiones, tengan que volver a esperar para procesar, de la misma manera, si hay un thread que esta haciendo el procesamiento, implica que el imsmo esta leyendo el archivo, al tener el recurso encapsulado, una nueva conexion no puede escribir en el mismo, tiene que esperar a que se termine de calcular. 
 De esta manera, cuando termina de procesar, le avisa a todos los threads que la respuesta ya fue calculada y cada uno puede hacer uso de la misma y se pone en acción la 2da parte del protocolo, quien antes de enviar, determina a que thread le corresponde que cosa y envia a cada agencia los ganadores de esa misma, serializados, es decir, genera un string de la clase Bet.
-<div align="center">
-![Diagrama de actividades](images/activity_diagram3.png)
+<div style="text-align: center; margin: 30px 0;">
+    <img src="images/activity_diagram3.png" alt="Diagrama de actividades">
 </div>
 
 # SIGTERM
 En el servidor, al independizar el acceptor del main, es posible recibir la señal y no estar bloqueado, de esta manera, el servidor le cierra el socket al cliente y ejecuta un shutdown, cerrando su socket es decir no puede aceptar mas conexiones y eliminando todos los threads. 
 Del lado del cliente, de la misma forma, cuando en su contexto recibe un SIGTERM, el mismo cierra la conexion y deja de enviar o recibir paquetes.
 
+# Conclusión
 
+A través de la virtualización de docker es posible realizar una red interna simulando varias computadoras que sirven para levantar los servicios requeridos y que los mismos estén interconectados mediante una red ficticia pudiendo asi simular la arquitectura entre clientes y servidor.
